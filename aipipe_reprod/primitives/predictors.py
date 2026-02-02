@@ -2,8 +2,9 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LassoCV, PassiveAggressiveClassifier, RidgeClassifier, RidgeClassifierCV, SGDClassifier
 from sklearn.ensemble import (RandomForestClassifier, AdaBoostClassifier, BaggingClassifier, ExtraTreesClassifier,
     GradientBoostingClassifier, AdaBoostRegressor, BaggingRegressor)
-from sklearn.model_selection import GridSearchCV, KFold, cross_val_score
+from sklearn.model_selection import GridSearchCV, KFold, cross_val_score, train_test_split
 from sklearn.naive_bayes import BernoulliNB, ComplementNB, GaussianNB, MultinomialNB
+from sklearn.neural_network import MLPClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier, NearestCentroid, RadiusNeighborsClassifier
 from sklearn.gaussian_process import GaussianProcessClassifier
@@ -11,16 +12,16 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticD
 from sklearn.svm import LinearSVC, NuSVC, SVC
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV, ARDRegression
 
-from imblearn.ensemble import BalancedRandomForestClassifier, EasyEnsembleClassifier, RUSBoostClassifier
 
 from copy import deepcopy
 import pandas as pd
 import numpy as np
+from xgboost import XGBClassifier
 
 from .primitive import Primitive
 
 class PredictorPrimitive(Primitive):
-    def transform(self, train_x: pd.DataFrame, train_y: pd.Series, test_x: pd.DataFrame) -> pd.Series:
+    def transform_1(self, train_x: pd.DataFrame, train_y: pd.Series, test_x: pd.DataFrame) -> pd.Series:
         raise NotImplementedError
 
 class RandomForestClassifierPrim(PredictorPrimitive):
@@ -31,7 +32,7 @@ class RandomForestClassifierPrim(PredictorPrimitive):
         self.type = 'Classifier'
         self.description = "A random forest classifier. A random forest is a meta estimator that fits a number of decision tree classifiers on various sub-samples of the dataset and uses averaging to improve the predictive accuracy and control over-fitting. The sub-sample size is always the same as the original input sample size but the samples are drawn with replacement if bootstrap=True (default)."
         self.accept_type = 'c'
-        self.model = RandomForestClassifier(random_state=0, n_jobs=5)
+        self.model = RandomForestClassifier(random_state=0, n_jobs=1)
 
     def can_accept(self, data):
         return self.can_accept_c(data, 'Classification')
@@ -39,10 +40,19 @@ class RandomForestClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
-        model = RandomForestClassifier(random_state=0, n_jobs=5)
-        model.fit(train_x, train_y)
-        pred_y =  model.predict(test_x)
+    def transform_1(self, train_x, train_y, test_x):
+        num_cols = train_x.select_dtypes(include=['number']).columns
+        self.model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0).clip(lower=-1e30,upper=1e30), train_y)
+        pred_y =  self.model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0).clip(lower=-1e30,upper=1e30))
+        return pred_y
+    
+    def fit(self, train_x, train_y, *kwargs):
+        num_cols = train_x.select_dtypes(include=['number']).columns
+        self.model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0), train_y)
+
+    def predict(self, test_x, *kwargs):
+        num_cols = test_x.select_dtypes(include=['number']).columns
+        pred_y = self.model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
         return pred_y
 
 class AdaBoostClassifierPrim(PredictorPrimitive):
@@ -60,7 +70,7 @@ class AdaBoostClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = AdaBoostClassifier(random_state=0)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -81,7 +91,7 @@ class BaggingClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = BaggingClassifier(random_state=0, n_jobs=5)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -104,7 +114,7 @@ class BernoulliNBClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = BernoulliNB()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -125,7 +135,7 @@ class DecisionTreeClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
     
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = DecisionTreeClassifier(random_state=0)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -146,7 +156,7 @@ class ExtraTreesClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = ExtraTreesClassifier(random_state=0, n_jobs=5)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -167,7 +177,7 @@ class GaussianNBClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = GaussianNB()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -188,7 +198,7 @@ class GaussianProcessClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = GaussianProcessClassifier()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -209,10 +219,11 @@ class GradientBoostingClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = GradientBoostingClassifier(random_state=0)
-        model.fit(train_x, train_y)
-        pred_y = model.predict(test_x)
+        num_cols = train_x.select_dtypes(include=['number']).columns
+        model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0), train_y)
+        pred_y = model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
         return pred_y
 
 class KNeighborsClassifierPrim(PredictorPrimitive):
@@ -230,7 +241,7 @@ class KNeighborsClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = KNeighborsClassifier()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -251,7 +262,7 @@ class LinearDiscriminantAnalysisPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = LinearDiscriminantAnalysis()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -272,7 +283,7 @@ class LinearSVCPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = LinearSVC(random_state=0)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -288,6 +299,7 @@ class LogisticRegressionPrim(PredictorPrimitive):
         self.type = 'Classifier'
         self.description = "Logistic Regression (aka logit, MaxEnt) classifier. In the multiclass case, the training algorithm uses the one-vs-rest (OvR) scheme if the ‘multi_class’ option is set to ‘ovr’, and uses the cross- entropy loss if the ‘multi_class’ option is set to ‘multinomial’. (Currently the ‘multinomial’ option is supported only by the ‘lbfgs’, ‘sag’ and ‘newton-cg’ solvers.) This class implements regularized logistic regression using the ‘liblinear’ library, ‘newton-cg’, ‘sag’ and ‘lbfgs’ solvers. It can handle both dense and sparse input. Use C-ordered arrays or CSR matrices containing 64-bit floats for optimal performance; any other input format will be converted (and copied). The ‘newton-cg’, ‘sag’, and ‘lbfgs’ solvers support only L2 regularization with primal formulation. The ‘liblinear’ solver supports both L1 and L2 regularization, with a dual formulation only for the L2 penalty."
         self.accept_type = 'c'
+        self.model = LogisticRegression(solver='liblinear',random_state=0,max_iter=100, n_jobs=1)
 
     def can_accept(self, data):
         return self.can_accept_c(data, 'Classification')
@@ -295,15 +307,145 @@ class LogisticRegressionPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=ConvergenceWarning, module='sklearn.svm._base')
             warnings.filterwarnings("ignore", category=FutureWarning, module='sklearn.linear_model._logistic')
-            model = LogisticRegression(solver='liblinear',random_state=0,max_iter=100)
+            model = LogisticRegression(solver='liblinear',random_state=0,max_iter=100, n_jobs=1)
             num_cols = train_x.select_dtypes(include=['number']).columns
             model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0), train_y)
             pred_y = model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
         return pred_y
+    
+    def fit(self, train_x, train_y):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=ConvergenceWarning, module='sklearn.svm._base')
+            warnings.filterwarnings("ignore", category=FutureWarning, module='sklearn.linear_model._logistic')
+            num_cols = train_x.select_dtypes(include=['number']).columns
+            self.model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0), train_y)
+            # pred_y = model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
+        # return pred_y
+    
+    def predict(self, data: pd.DataFrame, **kwargs) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=ConvergenceWarning, module='sklearn.svm._base')
+            warnings.filterwarnings("ignore", category=FutureWarning, module='sklearn.linear_model._logistic')
+            num_cols = data.select_dtypes(include=['number']).columns
+        return self.model.predict(data[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
+
+    def fit_predict(self, train_x: pd.DataFrame, train_y: pd.Series, test_x: pd.DataFrame) -> pd.Series:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=ConvergenceWarning, module='sklearn.svm._base')
+            warnings.filterwarnings("ignore", category=FutureWarning, module='sklearn.linear_model._logistic')
+            num_cols = train_x.select_dtypes(include=['number']).columns
+            self.model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0), train_y)
+            return self.model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
+
+
+import torch
+import torch.nn as nn
+
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim) -> None:
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)
+        )
+    
+    def forward(self, x):
+        return self.net(x)
+
+
+class MLPClassifierPrim(PredictorPrimitive):
+    def __init__(self):
+        super(MLPClassifierPrim, self).__init__(name='MLPClassifier')
+        self.hyperparams = []
+        self.id = 17
+        self.type = 'Classifier'
+        self.description = "Multi-layer Perceptron classifier. This model optimizes the log-loss function using LBFGS or stochastic gradient descent. Hidden layer sizes are given by the hidden_layer_sizes parameter. All other parameters are similar to those of LogisticRegression."
+        self.accept_type = 'c'
+        self.model = MLPClassifier(random_state=0, hidden_layer_sizes=(50,))
+
+    def can_accept(self, data):
+        return self.can_accept_c(data, 'Classification')
+
+    def is_needed(self, data):
+        return True
+
+    def transform_1(self, train_x, train_y, test_x):
+        # with warnings.catch_warnings():
+        #     warnings.filterwarnings("ignore", category=ConvergenceWarning, module='sklearn.neural_network._multilayer_perceptron')
+        #     num_cols = train_x.select_dtypes(include=['number']).columns
+        #     self.model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0), train_y)
+        #     pred_y = self.model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
+        # return pred_y
+        # 自定义
+        train_x_num = train_x.select_dtypes(include=['number']).fillna(0).replace([np.inf, -np.inf], 0)
+        test_x_num = test_x.select_dtypes(include=['number']).fillna(0).replace([np.inf, -np.inf], 0)
+        input_dim = train_x_num.shape[1]
+        output_dim = len(train_y.unique())
+        self.model = MLP(input_dim, 100, output_dim)
+        device = torch.device('cuda:5' if torch.cuda.is_available() else 'cpu')
+        self.model.to(device)
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+
+        train_x_num, val_x_num, train_y, val_y = train_test_split(train_x_num, train_y)
+
+        num_epochs = 100
+        best_model_params = None
+        best_val_accuracy = 0.0
+        for epoch in range(num_epochs):
+            self.model.train()
+            optimizer.zero_grad()
+            outputs = self.model(torch.from_numpy(train_x_num.values).float().to(device))
+            loss = criterion(outputs, torch.from_numpy(train_y.values).long().to(device))
+            loss.backward()
+            optimizer.step()
+            
+            if (epoch + 1) % 10 == 0:
+                # print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+                self.model.eval()
+                with torch.no_grad():
+                    val_outputs = self.model(torch.from_numpy(val_x_num.values).float().to(device))
+                    # val_loss = criterion(val_outputs, torch.from_numpy(val_y.values).long().to(device))
+                    _, val_pred_y = torch.max(val_outputs, 1)
+                    val_accuracy = (val_pred_y == torch.from_numpy(val_y.values).long().to(device)).float().mean()
+                    if val_accuracy.item() > best_val_accuracy:
+                        best_val_accuracy = val_accuracy.item()
+                        best_model_params = self.model.state_dict()
+                    # print(f'Val Loss: {val_loss.item():.4f}, Val Accuracy: {val_accuracy.item():.4f}')
+                    self.model.train()
+
+        if best_model_params is not None:
+            self.model.load_state_dict(best_model_params)
+
+        self.model.eval()
+        with torch.no_grad():
+            outputs = self.model(torch.from_numpy(test_x_num.values).float().to(device))
+            _, pred_y = torch.max(outputs, 1)
+        return pred_y.cpu().numpy()
+
+
+class XGBClassifierPrim(PredictorPrimitive):
+    def __init__(self):
+        super(XGBClassifierPrim, self).__init__(name='XGBClassifier')
+        self.hyperparams = []
+        self.id = 18
+        self.type = 'Classifier'
+        self.description = "XGBoost classifier. XGBoost is an implementation of gradient boosted decision trees designed for speed and performance."
+        self.accept_type = 'c'
+        self.model = None # 
+
+    def transform_1(self, train_x, train_y, test_x):
+        self.model = XGBClassifier(random_state=0, n_jobs=1, objective='multi:softmax', num_class=len(train_y.unique()))
+        num_cols = train_x.select_dtypes(include=['number']).columns
+        self.model.fit(train_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0), train_y)
+        pred_y = self.model.predict(test_x[num_cols].fillna(0).replace([np.inf, -np.inf], 0))
+        return pred_y
+
 
 class NearestCentroidPrim(PredictorPrimitive):
     def __init__(self):
@@ -320,7 +462,7 @@ class NearestCentroidPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = NearestCentroid()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -342,7 +484,7 @@ class PassiveAggressiveClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = PassiveAggressiveClassifier(random_state=0, n_jobs=5)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -363,7 +505,7 @@ class RidgeClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = RidgeClassifier(random_state=0)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -384,7 +526,7 @@ class RidgeClassifierCVPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = RidgeClassifierCV()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -405,7 +547,7 @@ class SGDClassifierPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = SGDClassifier(random_state=0, n_jobs=5, loss='log')
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -426,74 +568,13 @@ class SVCPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = SVC(random_state=0, probability=True)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
         return pred_y
 
-class BalancedRandomForestClassifierPrim(PredictorPrimitive):
-    def __init__(self):
-        super(BalancedRandomForestClassifierPrim, self).__init__(name='BalancedRandomForestClassifier')
-        self.hyperparams = []
-        self.id = 20
-        self.type = 'Classifier'
-        self.description = "A balanced random forest classifier. A balanced random forest randomly under-samples each boostrap sample to balance it."
-        self.accept_type = 'c'
 
-    def can_accept(self, data):
-        return self.can_accept_c(data, 'Classification')
-
-    def is_needed(self, data):
-        return True
-
-    def transform(self, train_x, train_y, test_x):
-        model = BalancedRandomForestClassifier(random_state=0, n_jobs=5)
-        model.fit(train_x, train_y)
-        pred_y = model.predict(test_x)
-        return pred_y
-
-class EasyEnsembleClassifierPrim(PredictorPrimitive):
-    def __init__(self):
-        super(EasyEnsembleClassifierPrim, self).__init__(name='EasyEnsembleClassifier')
-        self.hyperparams = []
-        self.id = 21
-        self.type = 'Classifier'
-        self.description = "Bag of balanced boosted learners also known as EasyEnsemble. This algorithm is known as EasyEnsemble [1]. The classifier is an ensemble of AdaBoost learners trained on different balanced boostrap samples. The balancing is achieved by random under-sampling."
-        self.accept_type = 'c'
-
-    def can_accept(self, data):
-        return self.can_accept_c(data, 'Classification')
-
-    def is_needed(self, data):
-        return True
-
-    def transform(self, train_x, train_y, test_x):
-        model = EasyEnsembleClassifier(random_state=0, n_jobs=5)
-        model.fit(train_x, train_y)
-        pred_y = model.predict(test_x)
-        return pred_y
-
-class RUSBoostClassifierPrim(PredictorPrimitive):
-    def __init__(self):
-        super(RUSBoostClassifierPrim, self).__init__(name='RUSBoostClassifier')
-        self.hyperparams = []
-        self.id = 22
-        self.type = 'Classifier'
-        self.description = "Random under-sampling integrating in the learning of an AdaBoost classifier. During learning, the problem of class balancing is alleviated by random under-sampling the sample at each iteration of the boosting algorithm."
-        self.accept_type = 'c'
-
-    def can_accept(self, data):
-        return self.can_accept_c(data, 'Classification')
-
-    def is_needed(self, data):
-        return True
-
-    def transform(self, train_x, train_y, test_x):
-        model = RUSBoostClassifier(random_state=0)
-        model.fit(train_x, train_y)
-        pred_y = model.predict(test_x)
-        return pred_y
 
 class ARDRegressionPrim(PredictorPrimitive):
     def __init__(self):
@@ -510,7 +591,7 @@ class ARDRegressionPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = ARDRegression()
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -531,7 +612,7 @@ class AdaBoostRegressorPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = AdaBoostRegressor(random_state=0)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)
@@ -552,7 +633,7 @@ class BaggingRegressorPrim(PredictorPrimitive):
     def is_needed(self, data):
         return True
     
-    def transform(self, train_x, train_y, test_x):
+    def transform_1(self, train_x, train_y, test_x):
         model = BaggingRegressor(random_state=0, n_jobs=5)
         model.fit(train_x, train_y)
         pred_y = model.predict(test_x)

@@ -1,5 +1,6 @@
 from loguru import logger
 import numpy as np
+import torch
 from .primitive import Primitive
 from .encoders import split_cat_and_num_cols
 
@@ -27,7 +28,7 @@ class MinMaxScalerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -47,12 +48,19 @@ class MinMaxScalerPrim(Primitive):
         test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         num_x = num_x.fillna(0)
         self.scaler.fit(num_x)
         num_x = pd.DataFrame(self.scaler.transform(num_x), columns=list(num_x.columns)).reset_index(drop=True).infer_objects()
         return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)],axis=1)
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        num_x = self.scaler.fit_transform(num_x)
+        data2 = torch.tensor(num_x).to(source_device)
+        return data2
 
 
 class MaxAbsScalerPrim(Primitive):
@@ -73,7 +81,7 @@ class MaxAbsScalerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -93,12 +101,19 @@ class MaxAbsScalerPrim(Primitive):
         test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         num_x = num_x.fillna(0)
         self.scaler.fit(num_x)
         num_x = pd.DataFrame(self.scaler.transform(num_x), columns=list(num_x.columns)).reset_index(drop=True).infer_objects()
         return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)],axis=1)
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        num_x = self.scaler.fit_transform(num_x)
+        data2 = torch.tensor(num_x).to(source_device)
+        return data2
 
 
 class RobustScalerPrim(Primitive):
@@ -119,7 +134,7 @@ class RobustScalerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -139,12 +154,19 @@ class RobustScalerPrim(Primitive):
         test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         num_x = num_x.fillna(0)
         self.scaler.fit(num_x)
         num_x = pd.DataFrame(self.scaler.transform(num_x), columns=list(num_x.columns)).reset_index(drop=True).infer_objects()
         return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)],axis=1)
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        num_x = self.scaler.fit_transform(num_x)
+        data2 = torch.tensor(num_x).to(source_device)
+        return data2
 
 
 class StandardScalerPrim(Primitive):
@@ -165,7 +187,7 @@ class StandardScalerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -185,12 +207,19 @@ class StandardScalerPrim(Primitive):
         test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
 
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         num_x = num_x.fillna(0)
         self.scaler.fit(num_x)
         num_x = pd.DataFrame(self.scaler.transform(num_x), columns=list(num_x.columns)).reset_index(drop=True).infer_objects()
         return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)],axis=1)
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        num_x = self.scaler.fit_transform(num_x)
+        data2 = torch.tensor(num_x).to(source_device)
+        return data2
 
 
 class QuantileTransformerPrim(Primitive):
@@ -211,32 +240,45 @@ class QuantileTransformerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
-        train_x.columns = train_x.columns.astype(str)
-        test_x.columns = test_x.columns.astype(str)
-        cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
-        cat_test_x = test_x[cat_train_x.columns]
-        num_test_x = test_x[num_train_x.columns]
-        # cat_test_x, num_test_x = split_cat_and_num_cols(test_x)
+    def transform_1(self, train_x, test_x, train_y):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            train_x.columns = train_x.columns.astype(str)
+            test_x.columns = test_x.columns.astype(str)
+            cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
+            cat_test_x = test_x[cat_train_x.columns]
+            num_test_x = test_x[num_train_x.columns]
+            # cat_test_x, num_test_x = split_cat_and_num_cols(test_x)
 
-        num_train_x = num_train_x.fillna(0)
-        num_test_x = num_test_x.fillna(0)
-      
-        self.scaler.fit(num_train_x)
+            num_train_x = num_train_x.fillna(0)
+            num_test_x = num_test_x.fillna(0)
+        
+            self.scaler.fit(num_train_x)
 
-        num_train_x = pd.DataFrame(self.scaler.transform(num_train_x), columns=list(num_train_x.columns)).reset_index(drop=True).infer_objects()
-        train_data_x = pd.concat([cat_train_x.reset_index(drop=True), num_train_x.reset_index(drop=True)],axis=1)
+            num_train_x = pd.DataFrame(self.scaler.transform(num_train_x), columns=list(num_train_x.columns)).reset_index(drop=True).infer_objects()
+            train_data_x = pd.concat([cat_train_x.reset_index(drop=True), num_train_x.reset_index(drop=True)],axis=1)
 
-        num_test_x = pd.DataFrame(self.scaler.transform(num_test_x), columns=list(num_test_x.columns)).reset_index(drop=True).infer_objects()
-        test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
-        return train_data_x, test_data_x, train_y
+            num_test_x = pd.DataFrame(self.scaler.transform(num_test_x), columns=list(num_test_x.columns)).reset_index(drop=True).infer_objects()
+            test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
+            return train_data_x, test_data_x, train_y
 
-    def tr(self, data: pd.DataFrame):
-        cat_x, num_x = split_cat_and_num_cols(data)
-        num_x = num_x.fillna(0)
-        self.scaler.fit(num_x)
-        num_x = pd.DataFrame(self.scaler.transform(num_x), columns=list(num_x.columns)).reset_index(drop=True).infer_objects()
-        return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)],axis=1)
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            cat_x, num_x = split_cat_and_num_cols(data)
+            num_x = num_x.fillna(0)
+            self.scaler.fit(num_x)
+            num_x = pd.DataFrame(self.scaler.transform(num_x), columns=list(num_x.columns)).reset_index(drop=True).infer_objects()
+            return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)],axis=1)
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            source_device = data.device
+            num_x = data.to('cpu').numpy()
+            num_x = self.scaler.fit_transform(num_x)
+            data2 = torch.tensor(num_x).to(source_device)
+            return data2
 
 
 class PowerTransformerPrim(Primitive):
@@ -257,7 +299,7 @@ class PowerTransformerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         try:
             train_x.columns = train_x.columns.astype(str)
             test_x.columns = test_x.columns.astype(str)
@@ -281,7 +323,7 @@ class PowerTransformerPrim(Primitive):
             logger.error(e)
             return train_x, test_x, train_y
         
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             cat_x, num_x = split_cat_and_num_cols(data)
             num_x = num_x.fillna(0)
@@ -291,6 +333,17 @@ class PowerTransformerPrim(Primitive):
         except Exception as e:
             logger.error(e)
             return data
+        
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        try:
+            num_x = self.scaler.fit_transform(num_x)
+        except Exception as e:
+            logger.error(e)
+            return data.to(source_device)
+        data2 = torch.tensor(num_x).to(source_device)
+        return data2
 
 
 class LogTransformerPrim(Primitive):
@@ -310,7 +363,7 @@ class LogTransformerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -330,7 +383,7 @@ class LogTransformerPrim(Primitive):
         test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)], axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             cat_x, num_x = split_cat_and_num_cols(data)
             num_x = num_x.fillna(0)
@@ -340,6 +393,14 @@ class LogTransformerPrim(Primitive):
         except Exception as e:
             logger.error(e)
             return data
+
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        pos_data = data[data >= 0]
+        neg_data = data[data < 0]
+        data2 = torch.zeros_like(data, device=data.device)
+        data2[data >= 0] = torch.log1p(pos_data)
+        data2[data < 0] = - torch.log1p(neg_data.abs())
+        return data2
 
 
 class NormalizerPrim(Primitive):
@@ -360,7 +421,7 @@ class NormalizerPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -379,7 +440,7 @@ class NormalizerPrim(Primitive):
         test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             cat_x, num_x = split_cat_and_num_cols(data)
             num_x = num_x.fillna(0)
@@ -390,6 +451,10 @@ class NormalizerPrim(Primitive):
             logger.error(e)
             return data
 
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        data2 = self.scaler.fit_transform(data.to('cpu').numpy())
+        return torch.tensor(data2).to(source_device)
 
 class KBinsDiscretizerOrdinalPrim(Primitive):
     def __init__(self, random_state=0):
@@ -412,7 +477,7 @@ class KBinsDiscretizerOrdinalPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         # 忽略特定的 UserWarning
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.preprocessing._discretization")
@@ -434,7 +499,7 @@ class KBinsDiscretizerOrdinalPrim(Primitive):
             test_data_x = pd.concat([cat_test_x.reset_index(drop=True), num_test_x.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.preprocessing._discretization")
             cat_x, num_x = split_cat_and_num_cols(data)
@@ -444,4 +509,10 @@ class KBinsDiscretizerOrdinalPrim(Primitive):
             num_x = pd.DataFrame(np.array(self.scaler.transform(num_x)), columns=list(num_x.columns)).reset_index(drop=True).infer_objects()
             return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)],axis=1)
 
-
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.preprocessing._discretization")
+            self.scaler = ColumnTransformer([("discrit", KBinsDiscretizer(encode='ordinal', random_state=0), list(range(data.shape[1])))], remainder='passthrough')
+            data2 = self.scaler.fit_transform(data.to('cpu').numpy())
+        return torch.tensor(data2).to(source_device)

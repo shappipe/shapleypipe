@@ -23,7 +23,7 @@ from collections import defaultdict
 load_dotenv()
 sys.path.append(os.getenv('PROJ_DIR'))
 
-from aipipe_reprod.dqn.dataloader.load_diffprep import path_to_df_dict
+from aipipe_reprod.utils.dataloader.load_diffprep import path_to_df_dict
 from aipipe_reprod.shapley.q_action_provider import QActionProvider
 from operators.types import DatasetType
 from sklearn.metrics import accuracy_score
@@ -290,19 +290,19 @@ class ParallelPipelineEvaluator:
                 
             if d['train'].isna().any().any() or d['test'].isna().any().any():
                 im = ImputerCatPrim()
-                d['train'], d['test'], d['target'] = im.transform(d['train'], d['test'], d['target'])
+                d['train'], d['test'], d['target'] = im.transform_1(d['train'], d['test'], d['target'])
                 im2 = ImputerMeanPrim()
-                d['train'], d['test'], d['target'] = im2.transform(d['train'], d['test'], d['target'])
+                d['train'], d['test'], d['target'] = im2.transform_1(d['train'], d['test'], d['target'])
             if d['train'].select_dtypes(include=['object']).any().any():
                 ohe = OneHotEncoderPrim()
-                d['train'], d['test'], d['target'] = ohe.transform(d['train'], d['test'], d['target'])
+                d['train'], d['test'], d['target'] = ohe.transform_1(d['train'], d['test'], d['target'])
                 
             caches: dict[str, float] = {}
             key = f'{self.dataset_name}:[]'
             last_acc = 0.
             try:
                 lr = QActionProvider.get(QActionProvider.done_action)
-                y_pred = lr.transform(d['train'], d['target'], d['test'])
+                y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                 last_acc = float(accuracy_score(d['target_test'], y_pred))
                 caches[key] = last_acc
             except Exception as e:
@@ -317,13 +317,13 @@ class ParallelPipelineEvaluator:
                 try:
                     o = QActionProvider.get(op)
 
-                    d['train'], d['test'], d['target'] = o.transform(
+                    d['train'], d['test'], d['target'] = o.transform_1(
                         d['train'], d['test'], d['target'])
 
                     cumu_pipe.append(op)
                     key = f'{self.dataset_name}:{str(cumu_pipe)}'
                     lr = QActionProvider.get(QActionProvider.done_action)
-                    y_pred = lr.transform(d['train'], d['target'], d['test'])
+                    y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                     last_acc = float(accuracy_score(d['target_test'], y_pred))
                     caches[key] = last_acc
 
@@ -828,7 +828,7 @@ def run_hierarchical_search(use = [], enable_pretrain=True, stage2_method='shapl
         raise ValueError("use must be a non-empty list")
     
     # --- 64核机器配置 ---
-    pipeline_length = 6
+    pipeline_length = 3  # 保持一个较小的长度以快速验证
 
     for meta in metadatas:
         process_dataset(meta, pipeline_length, enable_pretrain, stage2_method)

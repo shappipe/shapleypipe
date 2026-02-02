@@ -1,3 +1,7 @@
+'''
+分层计算 shapley 值，但是存在问题：顶层的 utility 错误的使用了下层的 utility，而不是使用多臂老虎机计算的 utility
+'''
+
 from __future__ import annotations
 import random
 from datetime import datetime
@@ -22,7 +26,7 @@ from collections import defaultdict
 load_dotenv()
 sys.path.append(os.getenv('PROJ_DIR'))
 
-from aipipe_reprod.dqn.dataloader.load_diffprep import path_to_df_dict
+from aipipe_reprod.utils.dataloader.load_diffprep import path_to_df_dict
 from aipipe_reprod.shapley.q_action_provider import QActionProvider
 from operators.types import DatasetType
 from sklearn.metrics import accuracy_score
@@ -126,19 +130,19 @@ def single_pipeline_eval(pipeline: List[int]):
             
         if d['train'].isna().any().any() or d['test'].isna().any().any():
             im = ImputerCatPrim()
-            d['train'], d['test'], d['target'] = im.transform(d['train'], d['test'], d['target'])
+            d['train'], d['test'], d['target'] = im.transform_1(d['train'], d['test'], d['target'])
             im2 = ImputerMeanPrim()
-            d['train'], d['test'], d['target'] = im2.transform(d['train'], d['test'], d['target'])
+            d['train'], d['test'], d['target'] = im2.transform_1(d['train'], d['test'], d['target'])
         if d['train'].select_dtypes(include=['object']).any().any():
             ohe = OneHotEncoderPrim()
-            d['train'], d['test'], d['target'] = ohe.transform(d['train'], d['test'], d['target'])
+            d['train'], d['test'], d['target'] = ohe.transform_1(d['train'], d['test'], d['target'])
             
         caches: dict[str, float] = {}
         key = f'{worker_dataset_name}:[]'
         last_acc = 0.
         try:
             lr = QActionProvider.get(QActionProvider.done_action)
-            y_pred = lr.transform(d['train'], d['target'], d['test'])
+            y_pred = lr.transform_1(d['train'], d['target'], d['test'])
             last_acc = float(accuracy_score(d['target_test'], y_pred))
             caches[key] = last_acc
         except Exception as e:
@@ -153,7 +157,7 @@ def single_pipeline_eval(pipeline: List[int]):
             try:
                 o = QActionProvider.get(op)
 
-                d['train'], d['test'], d['target'] = o.transform(
+                d['train'], d['test'], d['target'] = o.transform_1(
                     d['train'], d['test'], d['target'])
 
                 # 验证变换后的数据
@@ -164,7 +168,7 @@ def single_pipeline_eval(pipeline: List[int]):
                 cumu_pipe.append(op)
                 key = f'{worker_dataset_name}:{str(cumu_pipe)}'
                 lr = QActionProvider.get(QActionProvider.done_action)
-                y_pred = lr.transform(d['train'], d['target'], d['test'])
+                y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                 last_acc = float(accuracy_score(d['target_test'], y_pred))
                 caches[key] = last_acc
 
@@ -896,7 +900,7 @@ def run_hierarchical_search(use = [], max_concurrent_datasets=4, n_processes_per
         raise ValueError("use must be a non-empty list")
     
     # --- 64核机器配置 ---
-    pipeline_length = 6
+    pipeline_length = 3  # 保持一个较小的长度以快速验证
 
     tasks = [(meta, pipeline_length, n_processes_per_dataset, enable_pretrain) for meta in metadatas]
 

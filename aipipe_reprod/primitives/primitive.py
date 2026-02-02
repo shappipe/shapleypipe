@@ -16,14 +16,21 @@ class Primitive:
     def get_name(cls):
         return cls.__name__
 
-    def fit(self, X: pd.DataFrame, y: pd.Series):
+    def fit_1(self, X: pd.DataFrame, y: pd.Series=None):
         raise NotImplementedError('The method has not be implemented!')
+    
+    def fit(self, X: pd.DataFrame, y: pd.Series=None):
+        pass
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         return train_x, test_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y: pd.Series=None, **kwargs):
         return data
+    
+    def fit_transform(self, data: pd.DataFrame, y: pd.Series=None, **kwargs):
+        self.fit(data, y, **kwargs)
+        return self.transform(data, y, **kwargs)
     
     def can_accept(self, data: pd.DataFrame):
         return True

@@ -27,7 +27,7 @@ class ImputerCatPrim(Primitive):
             return True
         return False
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_trainX, num_trainX = split_cat_and_num_cols(train_x)
@@ -54,7 +54,7 @@ class ImputerCatPrim(Primitive):
         test_data_x = pd.concat([cat_testX.reset_index(drop=True), num_testX.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
 
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             cat_x, num_x = split_cat_and_num_cols(data)
             if len(cat_x.columns) == 0:

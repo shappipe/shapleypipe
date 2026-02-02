@@ -38,6 +38,9 @@ class UCB1_Bandit:
                 return self._select_arm_internal()
         else:
             return self._select_arm_internal()
+        
+    def select_rand(self):
+        return int(np.random.choice(self.arms))
 
     def _select_arm_internal(self) -> int:
         """内部的arm选择逻辑，假设已经在锁保护下"""
@@ -65,6 +68,7 @@ class UCB1_Bandit:
             )
             ucb_scores[arm] = avg_reward + exploration_term
 
+        # return max(ucb_scores, key=ucb_scores.get)
         return max(ucb_scores, key=ucb_scores.get)
 
     def update(self, arm: int, reward: float):

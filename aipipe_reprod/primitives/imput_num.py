@@ -24,7 +24,7 @@ class ImputerMeanPrim(Primitive):
             return True
         return False
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         if not self.is_needed(train_x) and not self.is_needed(test_x):
@@ -49,7 +49,7 @@ class ImputerMeanPrim(Primitive):
         test_data_x = pd.concat([cat_testX.reset_index(drop=True), num_testX.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             cat_x, num_x = split_cat_and_num_cols(data)
             if len(num_x.columns) == 0 or not self.is_needed(num_x):
@@ -84,7 +84,7 @@ class ImputerMedianPrim(Primitive):
             return True
         return False
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         if not self.is_needed(train_x) and not self.is_needed(test_x):
@@ -107,7 +107,7 @@ class ImputerMedianPrim(Primitive):
         test_data_x = pd.concat([cat_testX.reset_index(drop=True), num_testX.reset_index(drop=True)],axis=1)
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             cat_x, num_x = split_cat_and_num_cols(data)
             if len(num_x.columns) == 0 or not self.is_needed(num_x):
@@ -143,7 +143,7 @@ class ImputerNumPrim(Primitive):
             return True
         return False
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         if not self.is_needed(train_x) and not self.is_needed(test_x):
@@ -170,7 +170,7 @@ class ImputerNumPrim(Primitive):
         
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             cat_x, num_x = split_cat_and_num_cols(data)
             if len(num_x.columns) == 0 or not self.is_needed(num_x):

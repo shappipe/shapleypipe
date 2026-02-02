@@ -1,0 +1,14 @@
+numpy
+pandas
+scikit-learn
+imblearn
+joblib
+python-dotenv
+tqdm
+scipy
+psutil
+deprecated
+ipykernel
+loguru
+xgboost
+# torch # optional

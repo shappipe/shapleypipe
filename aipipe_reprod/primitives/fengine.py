@@ -1,5 +1,6 @@
 from loguru import logger
 from sklearn.kernel_approximation import Nystroem
+import torch
 from .primitive import Primitive
 from sklearn.preprocessing import PolynomialFeatures, FunctionTransformer
 from sklearn.decomposition import PCA, IncrementalPCA, KernelPCA, SparsePCA, TruncatedSVD, FastICA, NMF, LatentDirichletAllocation
@@ -41,7 +42,7 @@ class PolynomialFeaturesPrim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return True
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         if train_x.shape[1] > 100:
@@ -79,7 +80,7 @@ class PolynomialFeaturesPrim(Primitive):
         test_data_x = test_data_x.loc[:, ~test_data_x.columns.duplicated()]
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] > 100:
             return data
@@ -93,6 +94,13 @@ class PolynomialFeaturesPrim(Primitive):
         
         x = x.loc[:, ~x.columns.duplicated()]
         return x
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        if data.shape[1] > 100:
+            return data
+        source_device = data.device
+        data2 = torch.tensor(np.array(self.scaler.fit_transform(data.to('cpu').numpy()))).to(source_device)
+        return data2
 
 
 class InteractionFeaturesPrim(Primitive):
@@ -116,7 +124,7 @@ class InteractionFeaturesPrim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return True
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         if train_x.shape[1] > 100:
@@ -155,7 +163,7 @@ class InteractionFeaturesPrim(Primitive):
         test_data_x = test_data_x.loc[:, ~test_data_x.columns.duplicated()]
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] > 100:
             return data
@@ -169,6 +177,13 @@ class InteractionFeaturesPrim(Primitive):
         
         x = x.loc[:, ~x.columns.duplicated()]
         return x
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        if data.shape[1] > 100:
+            return data
+        source_device = data.device
+        data2 = torch.tensor(np.array(self.scaler.fit_transform(data.to('cpu').numpy()))).to(source_device)
+        return data2
 
 
 class PCA_AUTO_Prim(Primitive):
@@ -194,7 +209,7 @@ class PCA_AUTO_Prim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return True
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         # 分离数值列和分类列
@@ -237,12 +252,19 @@ class PCA_AUTO_Prim(Primitive):
             logger.error(f'PCA error: {e}')
             return train_x, test_x, train_y
         
-    def tr(self, data: pd.DataFrame):
+    def fit(self, data: pd.DataFrame, y: pd.Series=None):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        if num_x.shape[1] <= 2:
+            return
+        num_x = num_x.fillna(0)
+        self.pca.fit(num_x)
+        
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] <= 2:
             return data
         num_x = num_x.fillna(0)
-        self.pca.fit(num_x)
+        # self.pca.fit(num_x)
         try:
             num_x = pd.DataFrame(self.pca.transform(num_x), columns=[f'PC{i+1}' for i in range(self.pca.n_components_)])
             if cat_x.shape[1] == 0:
@@ -254,6 +276,17 @@ class PCA_AUTO_Prim(Primitive):
             return x
         except Exception as e:
             logger.error(f'PCA error: {e}')
+            return data
+        
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        try:
+            num_x = self.pca.fit_transform(num_x)
+            data2 = torch.tensor(num_x).to(source_device)
+            return data2
+        except Exception as e:
+            logger.error(f'PCA_LAPACK_Prim: {e}')
             return data
 
 class IncrementalPCA_Prim(Primitive):
@@ -279,7 +312,7 @@ class IncrementalPCA_Prim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return data.shape[1] > 4
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -321,13 +354,20 @@ class IncrementalPCA_Prim(Primitive):
             logger.error(f'IncrementalPCA_Prim: {e}')
             return train_x, test_x, train_y
         
-    def tr(self, data: pd.DataFrame):
+    def fit(self, data: pd.DataFrame, y: pd.Series=None):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        if num_x.shape[1] <= 2:
+            return
+        num_x = num_x.fillna(0)
+        self.pca.fit(num_x)
+
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] <= 2:
             return data
         num_x = num_x.fillna(0)
         try:
-            self.pca.fit(num_x)
+            # self.pca.fit(num_x)
             num_x = pd.DataFrame(self.pca.transform(num_x), columns=[f'PC{i+1}' for i in range(self.pca.n_components_)])
             if cat_x.shape[1] == 0:
                 x = num_x.reset_index(drop=True)
@@ -338,6 +378,17 @@ class IncrementalPCA_Prim(Primitive):
             return x
         except Exception as e:
             logger.error(f'KernelPCA_Prim: {e}')
+            return data
+        
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        try:
+            num_x = self.pca.fit_transform(num_x)
+            data2 = torch.tensor(num_x).to(source_device)
+            return data2
+        except Exception as e:
+            logger.error(f'PCA_LAPACK_Prim: {e}')
             return data
 
 
@@ -367,7 +418,7 @@ class KernelPCA_Prim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return data.shape[1] > 4
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         try:
@@ -437,13 +488,20 @@ class KernelPCA_Prim(Primitive):
             logger.error(f'KernelPCA_Prim error: {e}')
             return train_x, test_x, train_y
         
-    def tr(self, data: pd.DataFrame):
+    def fit(self, data: pd.DataFrame, y: pd.Series=None):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        if num_x.shape[1] <= 2:
+            return
+        num_x = num_x.fillna(0)
+        self.pca.fit(num_x)
+        
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] <= 2:
             return data
         num_x = num_x.fillna(0)
         try:
-            self.pca.fit(num_x)
+            # self.pca.fit(num_x)
             num_x = pd.DataFrame(self.pca.transform(num_x), columns=[f'PC{i+1}' for i in range(self.n_components)])
             if cat_x.shape[1] == 0:
                 x = num_x.reset_index(drop=True)
@@ -454,6 +512,17 @@ class KernelPCA_Prim(Primitive):
             return x
         except Exception as e:
             logger.error(f'KernelPCA_Prim error: {e}')
+            return data
+        
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        try:
+            num_x = self.pca.fit_transform(num_x)
+            data2 = torch.tensor(num_x).to(source_device)
+            return data2
+        except Exception as e:
+            logger.error(f'PCA_LAPACK_Prim: {e}')
             return data
 
 
@@ -489,7 +558,7 @@ class TruncatedSVD_Prim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return data.shape[1] > 4
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -527,8 +596,15 @@ class TruncatedSVD_Prim(Primitive):
         except Exception as e:
             logger.error(f'TruncatedSVD error: {e}')
             return train_x, test_x, train_y
-        
-    def tr(self, data: pd.DataFrame):
+
+    def fit(self, data: pd.DataFrame, y: pd.Series=None):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        if num_x.shape[1] <= 2:
+            return
+        num_x = num_x.fillna(0)
+        self.pca.fit(num_x)
+
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] <= 2:
             return data
@@ -547,6 +623,16 @@ class TruncatedSVD_Prim(Primitive):
             logger.error(f'TruncatedSVD error: {e}')
             return data
 
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        try:
+            num_x = self.pca.fit_transform(num_x)
+            data2 = torch.tensor(num_x).to(source_device)
+            return data2
+        except Exception as e:
+            logger.error(f'PCA_LAPACK_Prim: {e}')
+            return data
 
 class RandomTreesEmbeddingPrim(Primitive):
     def __init__(self, random_state: int = 0) -> None:
@@ -570,7 +656,7 @@ class RandomTreesEmbeddingPrim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return data.shape[1] < 10
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         if train_x.shape[1] > 100:
@@ -615,12 +701,19 @@ class RandomTreesEmbeddingPrim(Primitive):
         
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def fit(self, data: pd.DataFrame, y: pd.Series=None, **kwargs):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        if num_x.shape[1] > 100:
+            return
+        num_x = num_x.fillna(0)
+        self.pca.fit(num_x)
+    
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] > 100:
             return data
         num_x = num_x.fillna(0)
-        self.pca.fit(num_x)
+        # self.pca.fit(num_x)
         num_x_embed = self.pca.transform(num_x).toarray()
         new_cols = [f'embed_{i}' for i in range(num_x_embed.shape[1])]
         if cat_x.shape[1] == 0:
@@ -629,6 +722,18 @@ class RandomTreesEmbeddingPrim(Primitive):
             x = pd.concat([cat_x.reset_index(drop=True), 
                            pd.DataFrame(num_x_embed, columns=new_cols)], axis=1)
         return x
+    
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        if data.shape[1] > 100:
+            return data
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        num_x: np.ndarray = self.pca.fit_transform(num_x).toarray()
+        # fix output dim to (n, 3200)
+        res = np.zeros((num_x.shape[0], 3200))
+        res[:, :num_x.shape[1]] = num_x
+        data2 = torch.tensor(res).to(source_device)
+        return data2
 
 
 class PCA_ARPACK_Prim(Primitive):
@@ -651,7 +756,7 @@ class PCA_ARPACK_Prim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return data.shape[1] > 4
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -689,13 +794,20 @@ class PCA_ARPACK_Prim(Primitive):
             logger.error(f'PCA_ARPACK_Prim: {e}')
             return train_x, test_x, train_y
         
-    def tr(self, data: pd.DataFrame):
+    def fit(self, data: pd.DataFrame, y: pd.Series=None):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        if num_x.shape[1] <= 2:
+            return
+        num_x = num_x.fillna(0)
+        self.pca.fit(num_x)
+
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] <= 2:
             return data
         num_x = num_x.fillna(0)
         try:
-            self.pca.fit(num_x)
+            # self.pca.fit(num_x)
             num_x_embed = self.pca.transform(num_x)
             new_cols = [f'PC{i+1}' for i in range(num_x_embed.shape[1])]
             if cat_x.shape[1] == 0:
@@ -703,6 +815,17 @@ class PCA_ARPACK_Prim(Primitive):
             else:
                 x = pd.concat([cat_x.reset_index(drop=True), pd.DataFrame(num_x_embed, columns=new_cols)], axis=1)
             return x
+        except Exception as e:
+            logger.error(f'PCA_LAPACK_Prim: {e}')
+            return data
+        
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        try:
+            num_x = self.pca.fit_transform(num_x)
+            data2 = torch.tensor(num_x).to(source_device)
+            return data2
         except Exception as e:
             logger.error(f'PCA_LAPACK_Prim: {e}')
             return data
@@ -727,7 +850,7 @@ class PCA_LAPACK_Prim(Primitive):
     def is_needed(self, data: pd.DataFrame) -> bool:
         return data.shape[1] > 4
 
-    def transform(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
+    def transform_1(self, train_x: pd.DataFrame, test_x: pd.DataFrame, train_y: pd.Series):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         cat_train_x, num_train_x = split_cat_and_num_cols(train_x)
@@ -766,13 +889,20 @@ class PCA_LAPACK_Prim(Primitive):
             logger.error(f'PCA_LAPACK_Prim: {e}')
             return train_x, test_x, train_y
 
-    def tr(self, data: pd.DataFrame):
+    def fit(self, data: pd.DataFrame, y: pd.Series=None):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        if num_x.shape[1] <= 2:
+            return
+        num_x = num_x.fillna(0)
+        self.pca.fit(num_x)
+
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         if num_x.shape[1] <= 2:
             return data
         num_x = num_x.fillna(0)
         try:
-            self.pca.fit(num_x)
+            # self.pca.fit(num_x)
             num_x_embed = self.pca.transform(num_x)
             new_cols = [f'PC{i+1}' for i in range(num_x_embed.shape[1])]
             if cat_x.shape[1] == 0:
@@ -780,6 +910,17 @@ class PCA_LAPACK_Prim(Primitive):
             else:
                 x = pd.concat([cat_x.reset_index(drop=True), pd.DataFrame(num_x_embed, columns=new_cols)], axis=1)
             return x
+        except Exception as e:
+            logger.error(f'PCA_LAPACK_Prim: {e}')
+            return data
+
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        num_x = data.to('cpu').numpy()
+        try:
+            num_x = self.pca.fit_transform(num_x)
+            data2 = torch.tensor(num_x).to(source_device)
+            return data2
         except Exception as e:
             logger.error(f'PCA_LAPACK_Prim: {e}')
             return data

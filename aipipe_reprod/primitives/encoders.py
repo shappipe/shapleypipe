@@ -9,7 +9,8 @@ class LabelEncoder(LEncoder):
         return super(LabelEncoder, self).fit(list(y) + ['Unknown'])
 
     def fit_transform(self, y):
-        return super(LabelEncoder, self).fit_transform(list(y) + ['Unknown'])
+        self.fit(y)
+        return super(LabelEncoder, self).transform(list(y))
 
     def transform(self, y):
         new_y = ['Unknown' if x not in set(self.classes_) else x for x in y]
@@ -52,14 +53,14 @@ class NumericDataPrim(Primitive):
             return True
         return False
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         num_cols = train_x.select_dtypes('number').columns
         train_x = train_x[num_cols]
         num_cols = test_x.select_dtypes('number').columns
         test_x = test_x[num_cols]
         return train_x, test_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         num_cols = data.select_dtypes('number').columns
         return data[num_cols]
 
@@ -93,7 +94,7 @@ class OneHotEncoderPrim(Primitive):
             return False
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         # 确保列名都是字符串类型
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
@@ -126,19 +127,33 @@ class OneHotEncoderPrim(Primitive):
         
         # 合并数值列和编码后的分类列
         train_data_x = pd.concat([num_trainX.reset_index(drop=True), train_encoded], axis=1)
+        train_data_x = train_data_x.reindex(sorted(train_data_x.columns), axis=1)
         test_data_x = pd.concat([num_testX.reset_index(drop=True), test_encoded], axis=1)
+        test_data_x = test_data_x.reindex(sorted(test_data_x.columns), axis=1)
         
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def fit(self, data: pd.DataFrame, y=None, **kwargs):
+        cat_x, num_x = split_cat_and_num_cols(data)
+        cat_x = cat_x.astype(str)
+        if cat_x.empty:
+            return
+        self.encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+        # encoded = pd.DataFrame(
+        #     encoder.fit_transform(cat_x.fillna('MISSING')),
+        #     columns=encoder.get_feature_names_out(cat_x.columns)
+        # )
+        self.encoder.fit(cat_x.fillna('MISSING'))
+    
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
         cat_x = cat_x.astype(str)
         if cat_x.empty:
             return num_x.reset_index(drop=True)
-        encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+        # encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
         encoded = pd.DataFrame(
-            encoder.fit_transform(cat_x.fillna('MISSING')),
-            columns=encoder.get_feature_names_out(cat_x.columns)
+            self.encoder.transform(cat_x.fillna('MISSING')),
+            columns=self.encoder.get_feature_names_out(cat_x.columns)
         )
         # 按照列名排序
         encoded = encoded.reindex(sorted(encoded.columns), axis=1)
@@ -168,7 +183,7 @@ class LabelEncoderPrim(Primitive):
             return False
         return True
     
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         # 确保列名都是字符串类型
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
@@ -193,12 +208,16 @@ class LabelEncoderPrim(Primitive):
 
         train_data_x = pd.concat([cat_trainX.reset_index(drop=True), num_trainX.reset_index(drop=True)], axis=1)
         test_data_x = pd.concat([cat_testX.reset_index(drop=True), num_testX.reset_index(drop=True)], axis=1)
+        
         return train_data_x, test_data_x, train_y
     
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         cat_x, num_x = split_cat_and_num_cols(data)
-        for col in cat_x.columns:
-            cat_x[col] = self.preprocess[col].fit_transform(cat_x[col].astype(str).fillna('MISSING'))
+        cat_cols = cat_x.columns
+        for col in cat_cols:
+            self.preprocess[col] = LabelEncoder()
+            nv = self.preprocess[col].fit_transform(cat_x[col].astype(str).fillna('MISSING'))
+            cat_x[col] = nv
         return pd.concat([cat_x.reset_index(drop=True), num_x.reset_index(drop=True)], axis=1)
 
 

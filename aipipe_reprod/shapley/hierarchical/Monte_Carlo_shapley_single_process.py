@@ -23,10 +23,11 @@ from collections import defaultdict
 load_dotenv()
 sys.path.append(os.getenv('PROJ_DIR'))
 
-from aipipe_reprod.dqn.dataloader.load_diffprep import path_to_df_dict
+from aipipe_reprod.utils.dataloader.load_diffprep import path_to_df_dict
+from aipipe_reprod.utils.dataloader.load_deepline import get_deepline_metadatas
 from aipipe_reprod.shapley.q_action_provider import QActionProvider
 from operators.types import DatasetType
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from aipipe_reprod.primitives import ImputerCatPrim, ImputerMeanPrim, OneHotEncoderPrim, LabelEncoderPrim, NumericDataPrim
 from aipipe_reprod.shapley.hierarchical.operator_info import (
     OPERATOR_INFO, OPS_BY_CATEGORY,
@@ -298,23 +299,25 @@ class ParallelPipelineEvaluator:
                 
             if d['train'].isna().any().any() or d['test'].isna().any().any():
                 im = ImputerCatPrim()
-                d['train'], d['test'], d['target'] = im.transform(d['train'], d['test'], d['target'])
+                d['train'], d['test'], d['target'] = im.transform_1(d['train'], d['test'], d['target'])
                 im2 = ImputerMeanPrim()
-                d['train'], d['test'], d['target'] = im2.transform(d['train'], d['test'], d['target'])
+                d['train'], d['test'], d['target'] = im2.transform_1(d['train'], d['test'], d['target'])
             if d['train'].select_dtypes(include=['object']).any().any():
                 if self.dataset_name == 'pbcseq':
                     enc = NumericDataPrim()
                 else:
                     enc = LabelEncoderPrim()
-                d['train'], d['test'], d['target'] = enc.transform(d['train'], d['test'], d['target'])
+                d['train'], d['test'], d['target'] = enc.transform_1(d['train'], d['test'], d['target'])
                 
             caches: dict[str, float] = {}
             key = f'{self.dataset_name}:[]'
             last_acc = 0.
             try:
                 lr = QActionProvider.get(QActionProvider.done_action)
-                y_pred = lr.transform(d['train'], d['target'], d['test'])
+                y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                 last_acc = float(accuracy_score(d['target_test'], y_pred))
+                # last_f1 = float(f1_score(d['target_test'], y_pred, average='weighted'))
+                # last_auc = float(roc_auc_score(d['target_test'], y_pred))
                 caches[key] = last_acc
             except Exception as e:
                 caches[key] = 0.
@@ -328,13 +331,13 @@ class ParallelPipelineEvaluator:
                 try:
                     o = QActionProvider.get(op)
 
-                    d['train'], d['test'], d['target'] = o.transform(
+                    d['train'], d['test'], d['target'] = o.transform_1(
                         d['train'], d['test'], d['target'])
 
                     cumu_pipe.append(op)
                     key = f'{self.dataset_name}:{str(cumu_pipe)}'
                     lr = QActionProvider.get(QActionProvider.done_action)
-                    y_pred = lr.transform(d['train'], d['target'], d['test'])
+                    y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                     last_acc = float(accuracy_score(d['target_test'], y_pred))
                     caches[key] = last_acc
 
@@ -794,9 +797,14 @@ class HierarchicalShapley:
     
     def _pretrain_bandits(self, bandits: Dict[str, UCB1_Bandit], sample_size=None):
         # 为每个类别初始化一个简单的随机策略
-        cache_path = 'aipipe_reprod/shapley/saves/cache'
-        with open(os.path.join(cache_path, f'{self.dataset_name}.json.bak'), 'r') as f:
-            cache = json.load(f)
+        # cache_path = 'aipipe_reprod/shapley/saves/cache'
+        # with open(os.path.join(cache_path, f'{self.dataset_name}.json.bak'), 'r') as f:
+        #     cache = json.load(f)
+        all_cache_filename = sorted(list(filter(lambda x: x.endswith('.json.bak'), os.listdir('aipipe_reprod/shapley/saves/cache'))))
+        cache = {}
+        for filename in all_cache_filename:
+            with open(os.path.join('aipipe_reprod/shapley/saves/cache', filename), 'r') as f:
+                cache.update(json.load(f))
         
         # 该缓存将-1的算子去掉
         cache2 = {}
@@ -886,15 +894,40 @@ def process_dataset(meta, pipeline_length, enable_pretrain, stage2_method, num_s
         logger.remove(logger_id)
 
 
-def run_hierarchical_search(use = [], enable_pretrain=True, stage2_method='shapley', num_samples=100, rand_seed=42, mab_pretrain_sample=None):
+def run_hierarchical_search(use = [], enable_pretrain=True, stage2_method='shapley', num_samples=100, rand_seed=42, mab_pretrain_sample=None, dataset = 'diffprep'):
     logger.info("STARTING HIERARCHICAL SHAPLEY SEARCH")
-    _metadatas = load_diffprep_meta()
-    metadatas = [meta for meta in _metadatas if meta['name'] in use]
+    if dataset == 'diffprep':
+        _metadatas = load_diffprep_meta()
+        metadatas = [meta for meta in _metadatas if meta['name'] in use]
+    elif dataset == 'deepline':
+        _metadatas = get_deepline_metadatas()
+        metadatas = [meta for meta in _metadatas if meta['name'] in use]
     if len(metadatas) == 0:
         raise ValueError("use must be a non-empty list")
     
     # --- 64核机器配置 ---
-    pipeline_length = 6
+    pipeline_length = 3  # 保持一个较小的长度以快速验证
+    # pipe_len_dict = {
+    #     'abalone': -1,
+    #     'ada_prior': -2,
+    #     'avila': 0,
+    #     'connect-4': 0,
+    #     'eeg': 0,
+    #     'google': -2,
+    #     'house_prices': -2,
+    #     'jungle_chess': 0,
+    #     'micro': 0,
+    #     'mozilla4': 0,
+    #     'obesity': -1,
+    #     'page-blocks': 0,
+    #     'pbcseq': -2,
+    #     'pol': 0,
+    #     'run_or_walk': 0,
+    #     'shuttle': 0,
+    #     'uscensus': -2,
+    #     'wall-robot-nav': 0,
+    # }
+
     for meta in metadatas:
         process_dataset(meta, pipeline_length, enable_pretrain, 
                         stage2_method, num_samples, rand_seed, mab_pretrain_sample=mab_pretrain_sample)
@@ -914,19 +947,95 @@ def parse_args():
     return args
 
 if __name__ == '__main__':
+
+    # args = parse_args()
+
+    # for num_samples in range(5, 101, 5):
     num_samples = 75
+
+    # for rand_seed in [42, 64, 128, 256, 512, 1024, 2048, 2025, 65537]:
+    
+    # for mab_pretrain_sample in range(2100, 3001, 100):
+    # for rand_seed in [42, 64, 128, 256, 512, 1024, 2048, 2025, 65537]:
     rand_seed = 128
     np.random.seed(rand_seed)
     random.seed(rand_seed)
     run_hierarchical_search(
+        # use=['abalone', 'ada_prior','google',
+        #     'house_prices','obesity','uscensus'],
         use=['abalone', 'ada_prior','avila','connect-4','eeg','google',
             'house_prices','jungle_chess','micro','mozilla4','obesity',
             'page-blocks','pbcseq','pol','run_or_walk','shuttle','uscensus',
             'wall-robot-nav'],
+        # use=[
+            # # 'Accident_Casualties',
+            # # 'Frogs_MFCCs_family',
+            # # 'Frogs_MFCCs_gen',
+            # # 'Frogs_MFCCs_spec',
+            # 'HTRU_2',
+            # 'IndianLiverPatientDatasetILPD',
+            # # 'Iris',
+            # 'LendingClubIssuedLoans',
+            # # 'Skin_NonSkin',
+            # 'The_broken_machine',
+            # 'Wine_classification',
+            # 'adult',
+            # # 'analcatdata_broadwaymult',
+            # # 'ar4',
+            # 'bank-full',
+            # # 'baseball',
+            # # 'biodeg',
+            # # 'blood-transfusion',
+            # # 'bodyfat',
+            # 'braziltourism',
+            # 'bureau',
+            # # 'car',
+            # 'chatfield_4',
+            # 'cmc',
+            # 'crx',
+            # 'data_banknote_authentication',
+            # 'dermatology',
+            # 'diggle_table_a2',
+            # 'disclosure_z',
+            # 'glass',
+            # 'haberman',
+
+            # 
+            # 'home_credit',
+            # 'imagesegmentation',
+            # 'kc3',
+            # 'kidney',
+            # 'magic04',
+            # 'mammographic_masses',
+            # 'movement_libras',
+            # 'no2',
+            # 'plasma_retinol',
+            # 'pm10',
+            # 'schizo',
+            # 'socmob',
+            # 'solar-flare',
+            # 'test_bng_cmc',
+            # 'test_breast',
+            # 'test_credit',
+            # 'test_eucalyptus',
+            # 'test_ilpd',
+            # 'test_irish',
+            # 'test_phoneme',
+            # 'triazines',
+            # 'veteran',
+            # 'weatherAUS',
+            # 'wilt',
+        # ],
+        # use=[
+        #     'Accident_Casualties', 'analcatdata_broadwaymult',
+        #     'ar4', 'baseball', 'biodeg',
+        #     'blood-transfusion', 'bodyfat'
+        # ],
         enable_pretrain=True,
         stage2_method="shapley",
         num_samples=num_samples,
         rand_seed=rand_seed,
-        mab_pretrain_sample=2000,
+        mab_pretrain_sample=1000,
+        dataset='diffprep',
     )
 

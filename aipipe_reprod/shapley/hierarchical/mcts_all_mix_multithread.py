@@ -23,9 +23,9 @@ from collections import defaultdict
 load_dotenv()
 sys.path.append(os.getenv('PROJ_DIR'))
 
-from aipipe_reprod.dqn.dataloader.load_deepline import get_deepline_metadatas
-from aipipe_reprod.dqn.dataloader.load_diffprep import path_to_df_dict
-from aipipe_reprod.new_ql.q_action_provider import QActionProvider
+from aipipe_reprod.utils.dataloader.load_deepline import get_deepline_metadatas
+from aipipe_reprod.utils.dataloader.load_diffprep import path_to_df_dict
+from aipipe_reprod.actions.q_action_provider import QActionProvider
 from operators.types import DatasetType
 from sklearn.metrics import accuracy_score
 from aipipe_reprod.shapley.hierarchical.operator_info_full import (
@@ -179,7 +179,7 @@ def single_operator_pipe_eval_worker(pipeline: list[int], dataset_name: str):
         last_acc = 0.
         try:
             lr = QActionProvider.get(QActionProvider.done_action)
-            y_pred = lr.transform(d['train'], d['target'], d['test'])
+            y_pred = lr.transform_1(d['train'], d['target'], d['test'])
             last_acc = float(accuracy_score(d['target_test'], y_pred))
             caches[key] = last_acc
         except Exception as e:
@@ -194,13 +194,13 @@ def single_operator_pipe_eval_worker(pipeline: list[int], dataset_name: str):
             try:
                 o = QActionProvider.get(op)
 
-                d['train'], d['test'], d['target'] = o.transform(
+                d['train'], d['test'], d['target'] = o.transform_1(
                     d['train'], d['test'], d['target'])
 
                 cumu_pipe.append(op)
                 key = f'{dataset_name}:{str(cumu_pipe)}'
                 lr = QActionProvider.get(QActionProvider.done_action)
-                y_pred = lr.transform(d['train'], d['target'], d['test'])
+                y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                 last_acc = float(accuracy_score(d['target_test'], y_pred))
                 caches[key] = last_acc
 
@@ -519,7 +519,7 @@ class ParallelPipelineEvaluator:
             last_acc = 0.
             try:
                 lr = QActionProvider.get(QActionProvider.done_action)
-                y_pred = lr.transform(d['train'], d['target'], d['test'])
+                y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                 last_acc = float(accuracy_score(d['target_test'], y_pred))
                 caches[key] = last_acc
             except Exception as e:
@@ -534,13 +534,13 @@ class ParallelPipelineEvaluator:
                 try:
                     o = QActionProvider.get(op)
 
-                    d['train'], d['test'], d['target'] = o.transform(
+                    d['train'], d['test'], d['target'] = o.transform_1(
                         d['train'], d['test'], d['target'])
 
                     cumu_pipe.append(op)
                     key = f'{self.dataset_name}:{str(cumu_pipe)}'
                     lr = QActionProvider.get(QActionProvider.done_action)
-                    y_pred = lr.transform(d['train'], d['target'], d['test'])
+                    y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                     last_acc = float(accuracy_score(d['target_test'], y_pred))
                     caches[key] = last_acc
 
@@ -932,7 +932,7 @@ def process_dataset_worker(meta, pipeline_length, enable_pretrain, stage2_method
         # Create a result file for this process
         result_file = f'aipipe_reprod/shapley/saves/mcts/mix_ops_mcts.tsv'
         os.makedirs('aipipe_reprod/shapley/saves/mcts', exist_ok=True)
-        with open(result_file, 'w') as f:
+        with open(result_file, 'a') as f:
             f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t{dataset_name}\t{num_samples}\t{rand_seed}"
                     + f"\t{mab_pretrain_sample}\t{pipeline}\t{pipeline_length}\t{acc:.4f}"
                     + f"\t{stage_1_evals}\t{stage_2_evals}"
@@ -1021,13 +1021,13 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--use', type=str, required=True, help='Comma-separated dataset names')
+    # parser.add_argument('--use', type=str, required=True, help='Comma-separated dataset names')
     parser.add_argument('--enable_pretrain', type=int, default=1, help='Enable bandit pre-training (1 or 0)')
     parser.add_argument('--stage2_method', type=str, default='shapley', choices=['shapley', 'greedy'], help='Method for Stage 2 search')
     parser.add_argument('--num_samples', type=int, default=100, help='Number of Monte Carlo samples (K) for Stage 2 Shapley')
     parser.add_argument('--use_multiprocessing', type=int, default=1, help='Use multiprocessing for parallel processing (1 or 0)')
     parser.add_argument('--n_processes', type=int, default=4, help='Number of processes to use (default: number of CPUs)')
-    parser.add_argument('--dataset', type=str, default='diffprep', choices=['diffprep', 'deepline'], help='Dataset to use')
+    parser.add_argument('--dataset', type=str, default='deepline', choices=['diffprep', 'deepline'], help='Dataset to use')
     args = parser.parse_args()
     args.use = list(map(lambda x: x.strip(), args.use.split(',')))
     args.enable_pretrain = bool(args.enable_pretrain)
@@ -1036,13 +1036,29 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+
+    # for num_samples in range(5, 101, 5):
+    # num_samples = 50
+
+    # for rand_seed in [42, 64, 128, 256, 512, 1024, 2048, 2025, 65537]:
+    
+    # for mab_pretrain_sample in range(2100, 3001, 100):
     # for rand_seed in [42, 64, 128, 256, 512, 1024, 2048, 2025, 65537]:
     for num_samples in range(100, 101, 10):
         rand_seed=42
         np.random.seed(rand_seed)
         random.seed(rand_seed)
         run_hierarchical_search(
-            use=args.use,
+            # use=args.use,
+            # use=['abalone', 'ada_prior','avila','connect-4','eeg','google',
+            #     'house_prices','jungle_chess','micro','mozilla4','obesity',
+            #     'page-blocks','pbcseq','pol','run_or_walk','shuttle','uscensus',
+            #     'wall-robot-nav'],
+            use=[
+                'Accident_Casualties', 'adult', 'analcatdata_broadwaymult',
+                'analcatdata_germangss', 'ar4', 'bank-full', 'baseball', 'biodeg',
+                'blood-transfusion', 'bodyfat'
+            ],
             enable_pretrain=args.enable_pretrain,
             stage2_method=args.stage2_method,
             num_samples=num_samples,

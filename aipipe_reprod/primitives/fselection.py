@@ -1,4 +1,5 @@
 from loguru import logger
+import torch
 from .primitive import Primitive
 from sklearn.feature_selection import VarianceThreshold
 import pandas as pd
@@ -24,7 +25,7 @@ class VarianceThresholdPrim(Primitive):
     def is_needed(self, data):
         return True
 
-    def transform(self, train_x, test_x, train_y):
+    def transform_1(self, train_x, test_x, train_y):
         train_x.columns = train_x.columns.astype(str)
         test_x.columns = test_x.columns.astype(str)
         try:
@@ -45,7 +46,7 @@ class VarianceThresholdPrim(Primitive):
             logger.error(e)
             return train_x, test_x, train_y
 
-    def tr(self, data: pd.DataFrame):
+    def transform(self, data: pd.DataFrame, y=None, **kwargs):
         try:
             num_cols = data.select_dtypes('number').columns
             self.selector.fit(data[num_cols])
@@ -56,3 +57,7 @@ class VarianceThresholdPrim(Primitive):
             logger.error(e)
             return data
         
+    def tr_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        source_device = data.device
+        data2 = self.selector.fit_transform(data.to('cpu').numpy())
+        return torch.tensor(data2).to(source_device)

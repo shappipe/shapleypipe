@@ -22,9 +22,9 @@ from collections import defaultdict
 load_dotenv()
 sys.path.append(os.getenv('PROJ_DIR'))
 
-from aipipe_reprod.dqn.dataloader.load_deepline import get_deepline_metadatas
-from aipipe_reprod.dqn.dataloader.load_diffprep import path_to_df_dict
-from aipipe_reprod.new_ql.q_action_provider import QActionProvider
+from aipipe_reprod.utils.dataloader.load_deepline import get_deepline_metadatas
+from aipipe_reprod.utils.dataloader.load_diffprep import path_to_df_dict
+from aipipe_reprod.actions.q_action_provider import QActionProvider
 from operators.types import DatasetType
 from sklearn.metrics import accuracy_score
 from aipipe_reprod.shapley.hierarchical.operator_info_full import (
@@ -343,7 +343,7 @@ class ParallelPipelineEvaluator:
                 last_acc = 0.
                 try:
                     lr = QActionProvider.get(QActionProvider.done_action)
-                    y_pred = lr.transform(d['train'], d['target'], d['test'])
+                    y_pred = lr.transform_1(d['train'], d['target'], d['test'])
                     last_acc = float(accuracy_score(d['target_test'], y_pred))
                     caches[key] = last_acc
                 except Exception as e:
@@ -358,7 +358,7 @@ class ParallelPipelineEvaluator:
                 try:
                     o = QActionProvider.get(op)
 
-                    d['train'], d['test'], d['target'] = o.transform(
+                    d['train'], d['test'], d['target'] = o.transform_1(
                         d['train'], d['test'], d['target'])
 
                     # cumu_pipe.append(op)
@@ -373,7 +373,7 @@ class ParallelPipelineEvaluator:
                     return 0.0, caches
 
             lr = QActionProvider.get(QActionProvider.done_action)
-            y_pred = lr.transform(d['train'], d['target'], d['test'])
+            y_pred = lr.transform_1(d['train'], d['target'], d['test'])
             last_acc = float(accuracy_score(d['target_test'], y_pred))
             caches[key] = last_acc
 
@@ -1127,12 +1127,29 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    num_samples = 75
+    # for num_samples in range(5, 101, 5):
+    num_samples = 50
+
+    # for rand_seed in [42, 64, 128, 256, 512, 1024, 2048, 2025, 65537]:
+    
+    # for mab_pretrain_sample in range(2100, 3001, 100):
+    # for rand_seed in [42, 64, 128, 256, 512, 1024, 2048, 2025, 65537]:
+    # for num_samples in range(50, 51, 10):
     rand_seed=42
     np.random.seed(rand_seed)
     random.seed(rand_seed)
     run_hierarchical_search(
-        use=args.use,
+        # use=args.use,
+        # use=['abalone', 'ada_prior','avila','connect-4','eeg','google',
+        #     'house_prices','jungle_chess','micro','mozilla4','obesity',
+        #     'page-blocks','pbcseq','pol','run_or_walk','shuttle','uscensus',
+        #     'wall-robot-nav'],
+        use=[
+            'avila', 'connect-4',
+            'jungle_chess', 'micro',
+            'pol', 'run_or_walk',
+            'shuttle', 'wall-robot-nav',
+        ],
         enable_pretrain=args.enable_pretrain,
         stage2_method=args.stage2_method,
         num_samples=num_samples,
