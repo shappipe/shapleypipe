@@ -1,5 +1,8 @@
 # ShapleyPipe
 
+- Supplementary material is provided in the [PDF](./supplementary_material.pdf)
+- Datasets are available at [datasets](./datasets)
+
 ## Project Structure
 
 ```
