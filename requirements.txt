@@ -1,14 +1,11 @@
-numpy
-pandas
-scikit-learn
-imblearn
-joblib
-python-dotenv
-tqdm
+numpy==1.26.4
+pandas==2.3.3
+scikit-learn==1.7.2
 scipy
-psutil
-deprecated
-ipykernel
+lightgbm
+matplotlib
+seaborn
+dotenv
 loguru
-xgboost
-# torch # optional
+psutil
+tqdm
