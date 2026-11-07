@@ -1,6 +1,6 @@
 # ShapleyPipe
 
-- Supplementary material is provided in the [PDF](./ICDE_2027_round_2_ShapleyPipe_supply.pdf)
+- Supplementary material is provided in the [PDF](./ShapleyPipe_Supplementary_Material.pdf)
 - Datasets are available at [datasets](./datasets)
 
 ## Project Structure
